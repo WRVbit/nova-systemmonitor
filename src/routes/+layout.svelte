@@ -17,53 +17,42 @@
     // Apply theme via CSS variables
     $effect(() => {
         // Ensure we're in browser context
-        if (typeof document === 'undefined') return;
-        
+        if (typeof document === "undefined") return;
+
         const root = document.documentElement;
         const themes = {
             light: {
-                "--md-sys-color-primary": "#0066cc",
+                "--md-sys-color-primary": "#8D6E63",
                 "--md-sys-color-on-primary": "#ffffff",
-                "--md-sys-color-surface": "#fafafa",
-                "--md-sys-color-on-surface": "#1a1c1e",
-                "--md-sys-color-background": "#fafafa",
-                "--md-sys-color-on-background": "#1a1c1e",
-                "--md-sys-color-surface-variant": "#e8eaed",
-                "--md-sys-color-on-surface-variant": "#444746",
-                "--md-sys-color-outline": "#ccc",
+                "--md-sys-color-surface": "#FFFFFF",
+                "--md-sys-color-on-surface": "#4E342E",
+                "--md-sys-color-background": "#FAF7F5",
+                "--md-sys-color-on-background": "#4E342E",
+                "--md-sys-color-surface-variant": "#EBE6E3",
+                "--md-sys-color-on-surface-variant": "#6D5D54",
+                "--md-sys-color-outline": "#D7CCC8",
             },
             dark: {
-                "--md-sys-color-primary": "#89b4fa",
-                "--md-sys-color-on-primary": "#003258",
-                "--md-sys-color-surface": "#1e1e2e",
-                "--md-sys-color-on-surface": "#cdd6f4",
-                "--md-sys-color-background": "#181825",
-                "--md-sys-color-on-background": "#cdd6f4",
-                "--md-sys-color-surface-variant": "#313244",
-                "--md-sys-color-on-surface-variant": "#a6adc8",
-                "--md-sys-color-outline": "#45475a",
+                "--md-sys-color-primary": "#D0BCFF",
+                "--md-sys-color-on-primary": "#381E72",
+                "--md-sys-color-surface": "#201F23",
+                "--md-sys-color-on-surface": "#E6E1E5",
+                "--md-sys-color-background": "#0E0E0E",
+                "--md-sys-color-on-background": "#E6E1E5",
+                "--md-sys-color-surface-variant": "#2B292F",
+                "--md-sys-color-on-surface-variant": "#CAC4D0",
+                "--md-sys-color-outline": "#49454F",
             },
             mocha: {
-                "--md-sys-color-primary": "#89b4fa",
-                "--md-sys-color-on-primary": "#1e1e2e",
-                "--md-sys-color-surface": "#313244",
-                "--md-sys-color-on-surface": "#cdd6f4",
-                "--md-sys-color-background": "#1e1e2e",
-                "--md-sys-color-on-background": "#cdd6f4",
-                "--md-sys-color-surface-variant": "#45475a",
-                "--md-sys-color-on-surface-variant": "#a6adc8",
-                "--md-sys-color-outline": "#585b70",
-            },
-            cappuccino: {
-                "--md-sys-color-primary": "#1e66f5",
-                "--md-sys-color-on-primary": "#ffffff",
-                "--md-sys-color-surface": "#e6e9ef",
-                "--md-sys-color-on-surface": "#4c4f69",
-                "--md-sys-color-background": "#eff1f5",
-                "--md-sys-color-on-background": "#4c4f69",
-                "--md-sys-color-surface-variant": "#dce0e8",
-                "--md-sys-color-on-surface-variant": "#5c5f77",
-                "--md-sys-color-outline": "#9ca0b0",
+                "--md-sys-color-primary": "#D7C0A0",
+                "--md-sys-color-on-primary": "#3E2723",
+                "--md-sys-color-surface": "#221F1D",
+                "--md-sys-color-on-surface": "#EDE0D4",
+                "--md-sys-color-background": "#1A1816",
+                "--md-sys-color-on-background": "#EDE0D4",
+                "--md-sys-color-surface-variant": "#2D2A27",
+                "--md-sys-color-on-surface-variant": "#D7CACC",
+                "--md-sys-color-outline": "#4E4540",
             },
         };
 

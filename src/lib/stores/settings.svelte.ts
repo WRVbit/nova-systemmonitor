@@ -1,6 +1,6 @@
 // Nova System Monitor - Optimized Settings Store (Svelte 5 Runes)
 
-export type Theme = 'light' | 'dark' | 'mocha' | 'cappuccino';
+export type Theme = 'light' | 'dark' | 'mocha';
 
 // Browser environment check
 const isBrowser = typeof window !== 'undefined';

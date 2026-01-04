@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Settings, Moon, Sun, Monitor, Palette } from "lucide-svelte";
+    import { Settings, Moon, Sun, Coffee } from "lucide-svelte";
     import {
         settings,
         setTheme,
@@ -9,10 +9,9 @@
     import type { Theme } from "$lib/stores/settings.svelte";
 
     const themes: { id: Theme; label: string; icon: any }[] = [
-        { id: "dark", label: "Dark", icon: Moon },
         { id: "light", label: "Light", icon: Sun },
-        { id: "mocha", label: "Mocha", icon: Palette },
-        { id: "cappuccino", label: "Cappuccino", icon: Palette },
+        { id: "dark", label: "Dark", icon: Moon },
+        { id: "mocha", label: "Mocha", icon: Coffee },
     ];
 </script>
 
