@@ -167,7 +167,7 @@
         border-radius: 12px;
         color: var(--md-sys-color-on-surface-variant);
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: background 80ms ease-out, transform 80ms ease-out;
     }
 
     .theme-btn:hover {

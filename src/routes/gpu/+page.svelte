@@ -332,7 +332,7 @@
         border-radius: 8px;
         color: var(--md-sys-color-on-surface);
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: background 80ms ease-out, transform 80ms ease-out;
         font-size: 0.875rem;
         font-weight: 500;
     }

@@ -96,7 +96,7 @@
         padding: 0.75rem 1.5rem;
         color: var(--md-sys-color-on-surface);
         text-decoration: none;
-        transition: all 0.2s ease;
+        transition: background 80ms ease-out, transform 80ms ease-out;
         border-left: 3px solid transparent;
     }
 

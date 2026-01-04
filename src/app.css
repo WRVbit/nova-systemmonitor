@@ -45,11 +45,11 @@
   background: var(--md-sys-color-on-surface-variant);
 }
 
-/* Smooth transitions - only for color properties to avoid layout jank */
+/* Smooth transitions - snappy, native-like feel */
 * {
   transition-property: background-color, color, border-color;
-  transition-duration: 0.2s;
-  transition-timing-function: ease;
+  transition-duration: 80ms;
+  transition-timing-function: ease-out;
 }
 
 /* Disable transitions for elements that shouldn't animate */
@@ -58,7 +58,9 @@
 }
 
 /* Performance: Use GPU acceleration for animated elements */
-.card, .nav-item, .stat-card {
+.card,
+.nav-item,
+.stat-card {
   will-change: transform;
   transform: translateZ(0);
 }

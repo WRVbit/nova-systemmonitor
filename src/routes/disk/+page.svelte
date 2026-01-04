@@ -428,7 +428,7 @@
         gap: 1.5rem;
         position: relative;
         overflow: hidden;
-        transition: all 0.2s ease;
+        transition: background 80ms ease-out, transform 80ms ease-out;
     }
 
     .partition-card:hover {

@@ -473,7 +473,7 @@
         color: var(--md-sys-color-on-surface-variant);
         font-weight: 500;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: background 80ms ease-out, transform 80ms ease-out;
     }
 
     .toggle-btn:hover {
