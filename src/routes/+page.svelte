@@ -11,19 +11,37 @@
   import * as monitor from "$lib/stores/monitor.svelte";
   import { settings } from "$lib/stores/settings.svelte";
 
+  let intervalId: number | undefined;
+
   onMount(() => {
     // Stagger initial fetches to prevent UI freeze
     // Critical data first (CPU, Memory, System)
     setTimeout(() => monitor.fetchCpuInfo(), 50);
     setTimeout(() => monitor.fetchMemoryInfo(), 100);
     setTimeout(() => monitor.fetchSystemInfo(), 150);
-    
+
     // Less critical data later
     setTimeout(() => monitor.fetchDiskInfo(), 300);
     setTimeout(() => monitor.fetchNetworkInfo(), 400);
     setTimeout(() => monitor.fetchGpuInfo(), 500);
-    
-    // Skip sensors and processes on dashboard - too heavy
+
+    // Live monitoring interval - refresh data every 2 seconds
+    intervalId = setInterval(() => {
+      monitor.fetchCpuInfo();
+      monitor.fetchMemoryInfo();
+      monitor.fetchDiskInfo();
+      monitor.fetchNetworkInfo();
+      monitor.fetchGpuInfo();
+      monitor.fetchSystemInfo();
+    }, 2000) as unknown as number;
+
+    // Cleanup on unmount
+    return () => {
+      if (intervalId !== undefined) {
+        clearInterval(intervalId);
+        intervalId = undefined;
+      }
+    };
   });
 
   // Helper functions
@@ -71,7 +89,8 @@
               </div>
               <div class="stat-detail">{monitor.cpuInfo.data.brand}</div>
               <div class="stat-detail">
-                {monitor.cpuInfo.data.physical_cores} cores / {monitor.cpuInfo.data.logical_cores} threads
+                {monitor.cpuInfo.data.physical_cores} cores / {monitor.cpuInfo
+                  .data.logical_cores} threads
               </div>
             {:else if monitor.cpuInfo.loading}
               <div class="stat-value">Loading...</div>
@@ -170,14 +189,20 @@
       <!-- GPU Card (if available) -->
       {#if monitor.gpuInfo.data && monitor.gpuInfo.data.gpus.length > 0}
         {@const gpu = monitor.gpuInfo.data.gpus[0]}
-        {@const isIgpu = (gpu.vendor.toLowerCase() === 'amd' && (gpu.name.toLowerCase().includes('radeon graphics') || gpu.name.toLowerCase().includes('ryzen'))) || gpu.vendor.toLowerCase() === 'intel' || gpu.name.toLowerCase().includes('integrated') || gpu.memory_total === 0}
+        {@const isIgpu =
+          (gpu.vendor.toLowerCase() === "amd" &&
+            (gpu.name.toLowerCase().includes("radeon graphics") ||
+              gpu.name.toLowerCase().includes("ryzen"))) ||
+          gpu.vendor.toLowerCase() === "intel" ||
+          gpu.name.toLowerCase().includes("integrated") ||
+          gpu.memory_total === 0}
         <div class="card">
           <div class="stat-card">
             <div class="stat-icon gpu">
               <Activity size={32} />
             </div>
             <div class="stat-content">
-              <h3>{isIgpu ? 'iGPU' : 'dGPU'}</h3>
+              <h3>{isIgpu ? "iGPU" : "dGPU"}</h3>
               <div class="stat-value">{formatPercent(gpu.utilization_gpu)}</div>
               <div class="stat-detail">{gpu.name}</div>
               <div class="stat-detail">{gpu.temperature}°C</div>
