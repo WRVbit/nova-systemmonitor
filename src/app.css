@@ -53,7 +53,8 @@
 }
 
 /* Disable transitions for elements that shouldn't animate */
-.no-transition {
+.no-transition,
+.status-badge {
   transition: none !important;
 }
 

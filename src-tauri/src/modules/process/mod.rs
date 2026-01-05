@@ -3,6 +3,7 @@
 
 use crate::modules::MonitorError;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::RwLock;
 use sysinfo::{Pid, ProcessStatus, Signal, System};
 
@@ -46,6 +47,7 @@ pub struct ProcessInfo {
     pub run_time: u64,
     pub user_id: Option<String>,
     pub nice: i32,
+    pub instance_count: Option<u32>, // Number of instances when grouped
 }
 
 /// Process list result
@@ -125,19 +127,52 @@ impl ProcessMonitor {
                         val
                     }
                 },
+                instance_count: None, // Will be set if grouped
             });
         }
 
+        // Group processes by name
+        let mut groups: std::collections::HashMap<String, ProcessInfo> =
+            std::collections::HashMap::new();
+
+        for p in processes {
+            groups
+                .entry(p.name.clone())
+                .and_modify(|e| {
+                    // CPU: sum usage
+                    e.cpu_usage += p.cpu_usage;
+                    // Memory: keep existing (assuming main process/shared memory)
+                    // Instance count: increment
+                    e.instance_count = Some(e.instance_count.unwrap_or(1) + 1);
+
+                    // Keep lowest PID as representative (usually main thread/process)
+                    if p.pid < e.pid {
+                        e.pid = p.pid;
+                        e.memory_bytes = p.memory_bytes;
+                        e.memory_percent = p.memory_percent;
+                        e.start_time = p.start_time;
+                        e.user_id = p.user_id.clone();
+                    }
+                })
+                .or_insert_with(|| {
+                    let mut new_p = p.clone();
+                    new_p.instance_count = Some(1);
+                    new_p
+                });
+        }
+
+        let mut grouped_processes: Vec<ProcessInfo> = groups.into_values().collect();
+
         // Sort by CPU usage descending by default
-        processes.sort_by(|a, b| {
+        grouped_processes.sort_by(|a, b| {
             b.cpu_usage
                 .partial_cmp(&a.cpu_usage)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        let total_count = processes.len();
+        let total_count = grouped_processes.len();
         ProcessList {
-            processes,
+            processes: grouped_processes,
             total_count,
         }
     }

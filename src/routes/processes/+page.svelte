@@ -1,7 +1,7 @@
 <!-- Nova System Monitor - Processes View -->
 <script lang="ts">
     import { onMount } from "svelte";
-    import { List, Search, ListTree, ListFilter } from "lucide-svelte";
+    import { List, Search } from "lucide-svelte";
     import { invoke } from "@tauri-apps/api/core";
     import * as monitor from "$lib/stores/monitor.svelte";
     import ProcessDetailsModal from "$lib/components/ProcessDetailsModal.svelte";
@@ -13,7 +13,7 @@
         name: string;
         exe_path: string;
         command: string[];
-        status: { type: string } | string;
+        status: string | Record<string, unknown>;
         cpu_usage: number;
         memory_bytes: number;
         memory_percent: number;
@@ -21,6 +21,7 @@
         run_time: number;
         user_id: string | null;
         nice: number;
+        instance_count?: number; // Added from backend
     }
 
     // Extended interface for Tree View
@@ -30,25 +31,50 @@
         is_expanded: boolean;
         normalized_status: string;
         normalized_user: string;
+        status_priority: number; // Pre-computed for fast sorting
+        instance_count?: number;
+    }
+
+    // Helper to extract status string from Rust enum
+    function extractStatus(status: string | Record<string, unknown>): string {
+        if (typeof status === "string") {
+            return status;
+        }
+        // Rust enum serializes as { "Running": null } or { "Sleeping": null }
+        // Get the first key which is the variant name
+        const keys = Object.keys(status);
+        if (keys.length > 0) {
+            return keys[0];
+        }
+        return "Unknown";
+    }
+
+    // Pre-compute status priority for fast sorting
+    function computeStatusPriority(status: string): number {
+        const s = status.toLowerCase();
+        if (s === "running") return 0;
+        if (s === "idle") return 1;
+        if (s === "sleeping") return 2;
+        if (s === "zombie") return 3;
+        return 4;
     }
 
     // Helper to normalize process for sorting/display
     function normalizeProcess(p: Process): ProcessNode {
+        const statusStr = extractStatus(p.status).trim();
         return {
             ...p,
             children: [],
             depth: 0,
             is_expanded: true,
-            normalized_status:
-                typeof p.status === "string"
-                    ? p.status
-                    : p.status?.type || "Unknown",
+            normalized_status: statusStr,
             normalized_user: p.user_id || "Unknown",
+            status_priority: computeStatusPriority(statusStr),
+            instance_count: p.instance_count || 1, // Use from backend
         };
     }
 
     let searchQuery = $state("");
-    let viewMode = $state<"flat" | "tree">("flat");
     let sortBy = $state<
         "pid" | "name" | "cpu_usage" | "memory_bytes" | "status" | "user"
     >("cpu_usage");
@@ -58,14 +84,19 @@
     // Modal state
     let selectedProcess = $state<ProcessNode | null>(null);
 
-    // Cache expanded state for tree view so it persists across refreshes
-    let expandedState = new Map<number, boolean>();
+    // Virtual scrolling state
+    const ROW_HEIGHT = 48; // Height of each table row in pixels
+    const BUFFER_SIZE = 5; // Extra rows to render above/below viewport
+    let scrollTop = $state(0);
+    let containerHeight = $state(600); // Default, will be measured
 
     onMount(() => {
         monitor.fetchProcessInfo();
+        monitor.fetchMemoryInfo(); // Initial fetch
         intervalId = setInterval(() => {
             monitor.fetchProcessInfo();
-        }, 5000) as unknown as number; // Reduced to 5s for performance
+            monitor.fetchMemoryInfo(); // Periodic fetch
+        }, 3000) as unknown as number; // 3s refresh - fast enough, low CPU
 
         return () => clearInterval(intervalId);
     });
@@ -96,6 +127,12 @@
     }
 
     function compareProcesses(a: ProcessNode, b: ProcessNode): number {
+        // First, prioritize by status using cached priority (Running > Sleeping)
+        if (a.status_priority !== b.status_priority) {
+            return a.status_priority - b.status_priority;
+        }
+
+        // Then sort by selected column
         let aVal: any =
             a[
                 sortBy === "status"
@@ -122,55 +159,8 @@
         return sortOrder === "asc" ? compare : -compare;
     }
 
-    // Recursive function to flatten the tree for rendering
-    function flattenTree(nodes: ProcessNode[], result: ProcessNode[]) {
-        for (const node of nodes) {
-            result.push(node);
-            if (node.children.length > 0 && node.is_expanded) {
-                // Add is_expanded logic later if we add collapse
-                flattenTree(node.children, result);
-            }
-        }
-    }
-
-    function buildProcessTree(flatProcesses: ProcessNode[]): ProcessNode[] {
-        const processMap = new Map<number, ProcessNode>();
-        const roots: ProcessNode[] = [];
-
-        // 1. Initialize all nodes
-        flatProcesses.forEach((p) => {
-            p.children = [];
-            p.depth = 0;
-            // For now, always expanded. Could check expandedState map here.
-            processMap.set(p.pid, p);
-        });
-
-        // 2. Build Hierarchy
-        flatProcesses.forEach((p) => {
-            if (p.parent_pid !== null && processMap.has(p.parent_pid)) {
-                const parent = processMap.get(p.parent_pid)!;
-                parent.children.push(p);
-            } else {
-                roots.push(p);
-            }
-        });
-
-        // 3. Sort children at each level
-        const sortRecursive = (nodes: ProcessNode[], depth: number) => {
-            nodes.sort(compareProcesses);
-            nodes.forEach((node) => {
-                node.depth = depth;
-                if (node.children.length > 0) {
-                    sortRecursive(node.children, depth + 1);
-                }
-            });
-        };
-
-        sortRecursive(roots, 0);
-        return roots;
-    }
-
-    function getProcesses() {
+    // Use $derived for cached computation - only recalculates when dependencies change
+    let processedData = $derived.by(() => {
         if (!monitor.processInfo.data) return [];
 
         let rawProcesses: ProcessNode[] =
@@ -188,16 +178,32 @@
             );
         }
 
-        if (viewMode === "tree") {
-            const treeRoots = buildProcessTree(rawProcesses);
-            const flattenedTree: ProcessNode[] = [];
-            flattenTree(treeRoots, flattenedTree);
-            return flattenedTree;
-        } else {
-            // Flat mode
-            return rawProcesses.sort(compareProcesses);
+        // Data is ALREADY grouped by backend and sorted by CPU descending
+        // If user wants custom sort, we sort the already grouped data (fast)
+        if (sortBy !== "cpu_usage" || sortOrder !== "desc") {
+            return rawProcesses.sort(compareProcesses).slice(0, 200);
         }
-    }
+
+        // Backend default sort (CPU desc) - just slice for limit
+        return rawProcesses.slice(0, 200);
+    });
+
+    // Calculate visible rows for virtual scrolling (depends on processedData)
+    let visibleRange = $derived.by(() => {
+        const startIndex = Math.max(
+            0,
+            Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_SIZE,
+        );
+        const endIndex = Math.min(
+            processedData.length,
+            Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + BUFFER_SIZE,
+        );
+        return { startIndex, endIndex };
+    });
+
+    let visibleProcesses = $derived(
+        processedData.slice(visibleRange.startIndex, visibleRange.endIndex),
+    );
 
     async function killProcess(pid: number, force: boolean) {
         try {
@@ -233,27 +239,33 @@
             </div>
         </div>
         <div class="header-controls">
-            <div class="view-toggle">
-                <button
-                    class="toggle-btn"
-                    class:active={viewMode === "flat"}
-                    onclick={() => (viewMode = "flat")}
-                    title="Flat View"
-                >
-                    <ListFilter size={18} />
-                    <span>Flat</span>
-                </button>
-                <button
-                    class="toggle-btn"
-                    class:active={viewMode === "tree"}
-                    onclick={() => (viewMode = "tree")}
-                    title="Tree View"
-                >
-                    <ListTree size={18} />
-                    <span>Tree</span>
-                </button>
-            </div>
-
+            {#if monitor.memoryInfo.data}
+                <div class="memory-stats">
+                    <div class="stat-row">
+                        <span class="stat-label">Total Memory</span>
+                        <span class="stat-value">
+                            {formatBytes(monitor.memoryInfo.data.used_memory)} /
+                            {formatBytes(monitor.memoryInfo.data.total_memory)}
+                            <span class="stat-percent"
+                                >({(
+                                    (monitor.memoryInfo.data.used_memory /
+                                        monitor.memoryInfo.data.total_memory) *
+                                    100
+                                ).toFixed(1)}%)</span
+                            >
+                        </span>
+                    </div>
+                    <div class="progress-track">
+                        <div
+                            class="progress-fill"
+                            style="width: {(monitor.memoryInfo.data
+                                .used_memory /
+                                monitor.memoryInfo.data.total_memory) *
+                                100}%"
+                        ></div>
+                    </div>
+                </div>
+            {/if}
             <div class="search-box">
                 <Search size={18} />
                 <input
@@ -264,17 +276,20 @@
             </div>
         </div>
     </header>
-
     <div class="page-content">
         {#if monitor.processInfo.loading && !monitor.processInfo.data}
             <div class="loading">Loading process information...</div>
         {:else if monitor.processInfo.error}
             <div class="error">Error: {monitor.processInfo.error}</div>
         {:else if monitor.processInfo.data}
-            {@const processes = getProcesses()}
+            {@const processes = processedData}
 
             <div class="card">
-                <div class="table-container">
+                <div
+                    class="table-container"
+                    bind:clientHeight={containerHeight}
+                    onscroll={(e) => (scrollTop = e.currentTarget.scrollTop)}
+                >
                     <table>
                         <thead>
                             <tr>
@@ -338,26 +353,37 @@
                                 <th style="width: 140px;">Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            {#each processes.slice(0, viewMode === "tree" ? undefined : 100) as process}
+                        <tbody style="position: relative;">
+                            <!-- Spacer for offset above visible rows -->
+                            <tr
+                                style="height: {visibleRange.startIndex *
+                                    ROW_HEIGHT}px; pointer-events: none;"
+                            >
+                                <td colspan="7"></td>
+                            </tr>
+
+                            <!-- Only render visible rows -->
+                            {#each visibleProcesses as process, i}
                                 <tr
                                     class="process-row clickable"
                                     ondblclick={() => openDetails(process)}
+                                    style="height: {ROW_HEIGHT}px;"
                                 >
-                                    <td class="pid">{process.pid}</td>
+                                    <td class="pid">
+                                        {#if (process.instance_count || 1) > 1}
+                                            <span class="pid-group">─</span>
+                                        {:else}
+                                            {process.pid}
+                                        {/if}
+                                    </td>
                                     <td class="name">
-                                        <div
-                                            class="name-cell"
-                                            style="padding-left: {viewMode ===
-                                            'tree'
-                                                ? process.depth * 20
-                                                : 0}px"
-                                        >
-                                            {#if viewMode === "tree" && process.depth > 0}
-                                                <span class="tree-line">└─</span
+                                        <div class="name-cell">
+                                            {process.name}
+                                            {#if (process.instance_count || 1) > 1}
+                                                <span class="instance-count"
+                                                    >({process.instance_count})</span
                                                 >
                                             {/if}
-                                            {process.name}
                                         </div>
                                     </td>
                                     <td class="cpu"
@@ -396,14 +422,21 @@
                                     </td>
                                 </tr>
                             {/each}
+
+                            <!-- Spacer for offset below visible rows -->
+                            <tr
+                                style="height: {(processedData.length -
+                                    visibleRange.endIndex) *
+                                    ROW_HEIGHT}px; pointer-events: none;"
+                            >
+                                <td colspan="7"></td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
                 <div class="table-footer">
-                    {processes.length} processes (Displaying {Math.min(
-                        viewMode === "tree" ? processes.length : 100,
-                        processes.length,
-                    )})
+                    {processes.length} grouped processes (from {monitor
+                        .processInfo.data?.processes.length || 0} total)
                 </div>
             </div>
         {/if}
@@ -454,6 +487,52 @@
         align-items: center;
     }
 
+    .memory-stats {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        min-width: 250px;
+        padding-right: 1.5rem;
+        border-right: 1px solid var(--md-sys-color-outline-variant);
+    }
+
+    .stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.75rem;
+    }
+
+    .stat-label {
+        color: var(--md-sys-color-on-surface-variant);
+        font-weight: 500;
+    }
+
+    .stat-value {
+        color: var(--md-sys-color-on-surface);
+        font-family: monospace;
+    }
+
+    .stat-percent {
+        color: var(--md-sys-color-primary);
+        font-weight: 600;
+        margin-left: 0.25rem;
+    }
+
+    .progress-track {
+        height: 6px;
+        background: var(--md-sys-color-surface-variant);
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: var(--md-sys-color-primary);
+        border-radius: 3px;
+        transition: width 0.3s ease;
+    }
+
     .view-toggle {
         display: flex;
         background: var(--md-sys-color-surface-variant);
@@ -473,7 +552,9 @@
         color: var(--md-sys-color-on-surface-variant);
         font-weight: 500;
         cursor: pointer;
-        transition: background 80ms ease-out, transform 80ms ease-out;
+        transition:
+            background 80ms ease-out,
+            transform 80ms ease-out;
     }
 
     .toggle-btn:hover {
@@ -584,6 +665,21 @@
         opacity: 0.5;
     }
 
+    .instance-count {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--md-sys-color-primary);
+        background: rgba(var(--md-sys-color-primary-rgb, 139, 115, 85), 0.15);
+        padding: 0.125rem 0.375rem;
+        border-radius: 4px;
+        margin-left: 0.25rem;
+    }
+
+    .pid-group {
+        color: var(--md-sys-color-outline);
+        opacity: 0.5;
+    }
+
     .name {
         font-weight: 500;
         max-width: 300px;
@@ -609,6 +705,16 @@
         font-size: 0.75rem;
         font-weight: 600;
         text-transform: uppercase;
+        display: inline-block;
+        position: relative;
+        transition: none;
+        white-space: nowrap;
+    }
+
+    .status-badge::before,
+    .status-badge::after {
+        content: none !important;
+        display: none !important;
     }
 
     .status-running {
@@ -625,6 +731,11 @@
     .status-zombie {
         background: rgba(249, 226, 175, 0.2);
         color: #f9e2af;
+    }
+
+    .status-unknown {
+        background: rgba(166, 173, 200, 0.2);
+        color: #a6adc8;
     }
 
     .actions {

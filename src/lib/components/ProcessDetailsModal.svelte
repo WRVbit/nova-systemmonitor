@@ -17,7 +17,7 @@
         name: string;
         exe_path: string;
         command: string[];
-        status: { type: string } | string;
+        status: string | Record<string, unknown>;
         normalized_status: string;
         cpu_usage: number;
         memory_bytes: number;
@@ -26,6 +26,7 @@
         run_time: number;
         user_id: string | null;
         normalized_user: string;
+        status_priority: number;
         nice: number;
     }
 
